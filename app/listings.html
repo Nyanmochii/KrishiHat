@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browse Listings — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="listings">
+  <div id="site-header"></div>
+
+  <main>
+    <div class="container page-head">
+      <h1>Find fresh produce<br>from farmers near you</h1>
+      <p class="lead">Browse verified listings and connect directly with farmers.</p>
+    </div>
+
+    <div class="container">
+      <!-- FR-11: search by crop name, filter by district and price range -->
+      <form class="card filter-bar" id="searchBar">
+        <div class="field grow">
+          <label for="q">Search</label>
+          <div class="search-wrap">
+            <span id="qIcon"></span>
+            <input class="input" id="q" type="search" placeholder="Search listings…">
+          </div>
+        </div>
+        <div class="field">
+          <label for="fCrop">Crop</label>
+          <select class="input" id="fCrop"><option value="">All Crops</option></select>
+        </div>
+        <div class="field">
+          <label for="fDistrict">District</label>
+          <select class="input" id="fDistrict"><option value="">All Districts</option></select>
+        </div>
+        <div class="field">
+          <label for="fMin">Min price (৳)</label>
+          <input class="input" id="fMin" type="number" min="0" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="fMax">Max price (৳)</label>
+          <input class="input" id="fMax" type="number" min="0" placeholder="Any">
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="fReset">Reset</button>
+      </form>
+
+      <p id="resultCount" style="font-weight:600;color:var(--muted);font-size:.9rem"></p>
+      <div class="listing-grid" id="grid" style="margin-top:14px"></div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    document.getElementById("qIcon").innerHTML = Icons.search;
+    document.getElementById("fCrop").innerHTML += KH_CROPS.map(c => `<option>${KH.esc(c)}</option>`).join("");
+    document.getElementById("fDistrict").innerHTML += KH_DISTRICTS.map(d => `<option>${KH.esc(d)}</option>`).join("");
+
+    const grid = document.getElementById("grid");
+
+    function render() {
+      const user = Store.session();
+      // FR-10: expired listings are hidden from search automatically
+      let rows = Store.visibleListings();
+
+      const q = document.getElementById("q").value.trim().toLowerCase();
+      const crop = document.getElementById("fCrop").value;
+      const dist = document.getElementById("fDistrict").value;
+      const min = parseFloat(document.getElementById("fMin").value);
+      const max = parseFloat(document.getElementById("fMax").value);
+
+      if (q) rows = rows.filter(l => l.crop.toLowerCase().includes(q));
+      if (crop) rows = rows.filter(l => l.crop === crop);
+      if (dist) rows = rows.filter(l => l.district === dist);
+      if (!isNaN(min)) rows = rows.filter(l => l.price >= min);
+      if (!isNaN(max)) rows = rows.filter(l => l.price <= max);
+
+      document.getElementById("resultCount").textContent =
+        rows.length + (rows.length === 1 ? " listing found" : " listings found");
+
+      if (!rows.length) {
+        grid.innerHTML = `<div class="card empty-state" style="grid-column:1/-1">${Icons.search}
+          <h3>No listings match your search</h3><p>Try another crop name, district or price range.</p></div>`;
+        return;
+      }
+      grid.innerHTML = rows.map(l => listingCardHTML(l, user)).join("");
+      wireSaveButtons(grid, user, render);
+    }
+
+    document.getElementById("searchBar").addEventListener("input", render);
+    document.getElementById("fReset").addEventListener("click", () => {
+      ["q", "fCrop", "fDistrict", "fMin", "fMax"].forEach(id => document.getElementById(id).value = "");
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

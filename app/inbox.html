@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inbox — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="inbox">
+  <div id="site-header"></div>
+  <main>
+    <div class="container page-head"><h1>Inbox</h1><p class="lead">Replies, price offers and deals with farmers and buyers.</p></div>
+    <div class="container" id="inboxHost"></div>
+  </main>
+  <div id="site-footer"></div>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    const user = Store.session(), host = document.getElementById("inboxHost");
+    if (!user || user.role === "admin") {
+      host.innerHTML = `<div class="card empty-state"><h3>Log in as a farmer or buyer to see your inbox</h3><a class="btn btn-primary" href="login.html">Login</a></div>`;
+    } else {
+      let sel = Number(new URLSearchParams(location.search).get("id")) || 0;
+      const thread = q => {
+        const l = Store.getListing(q.listingId), o = Store.db.users.find(u => u.id === Store.other(q, user.id));
+        const msgs = [{ by: q.buyerId, name: q.buyerName, text: q.message + (q.qty ? " (wants " + q.qty + " kg)" : ""), offer: q.offer, at: q.date }, ...q.thread];
+        const last = [...msgs].reverse().find(m => m.offer && m.by !== user.id);
+        const open = q.status !== "deal" && q.status !== "closed", done = !open;
+        const rv = Store.db.reviews.some(r => r.inquiryId === q.id && r.byId === user.id);
+        return `<h2>${l ? KH.esc(l.crop) : "Listing removed"} <span class="badge active">${khStatus(q.status)}</span></h2>
+        <p class="meta">With ${KH.esc(o ? o.name : "")} · listed at ${l ? KH.fmtMoney(l.price) + "/kg" : "—"}${q.agreed ? " · agreed " + KH.fmtMoney(q.agreed) + "/kg" : ""}</p>
+        ${q.status === "deal" && o ? `<div class="reveal-note">${Icons.success}<span>Deal agreed. Contact ${KH.esc(o.name)}: <b>${KH.esc(o.phone)}</b></span></div>` : ""}
+        <div>${msgs.map(m => `<div class="msg ${m.by === user.id ? "me" : ""}"><b>${KH.esc(m.name)}</b> <small>${KH.timeAgo(m.at)}</small><p>${KH.esc(m.text)}</p>${m.offer ? `<span class="badge sold">Offer ${KH.fmtMoney(m.offer)}/kg</span>${m === last && open ? ` <button class="btn btn-primary btn-sm" data-acc="${m.offer}" type="button">Accept offer</button>` : ""}` : ""}</div>`).join("")}</div>
+        ${q.status !== "closed" ? `<form id="rf"><textarea class="input" id="rt" placeholder="Write a reply"></textarea><div class="form-actions"><input class="input" id="ro" type="number" min="1" placeholder="Offer ৳/kg" style="max-width:190px"><button class="btn btn-primary" type="submit">Send</button><button class="btn btn-ghost" id="cl" type="button">Close conversation</button></div></form>` : ""}
+        ${done && !rv ? `<form id="rvf" class="card" style="margin-top:14px;padding:14px"><b>Rate ${o ? KH.esc(o.name) : ""}</b><div class="form-actions"><select class="input" id="rs" style="max-width:110px">${[5, 4, 3, 2, 1].map(n => `<option value="${n}">${n} ★</option>`).join("")}</select><input class="input" id="rx" placeholder="Short review"><button class="btn btn-primary" type="submit">Submit review</button></div></form>` : ""}
+        ${done && rv ? `<p class="meta">Thanks, your review is saved.</p>` : ""}`;
+      };
+      function render() {
+        const list = Store.inquiriesFor(user); if (!sel && list[0]) sel = list[0].id;
+        const q = Store.getInquiry(sel);
+        host.innerHTML = `<div class="inbox-grid"><aside>${list.map(i => { const l = Store.getListing(i.listingId), o = Store.db.users.find(u => u.id === Store.other(i, user.id));
+          return `<a class="card inquiry-item ${i.id === sel ? "sel" : ""}" href="inbox.html?id=${i.id}" data-sel="${i.id}"><div class="top"><b>${l ? KH.esc(l.crop) : "Removed"}</b><span>${khStatus(i.status)}</span></div><p>${KH.esc(o ? o.name : "")}</p></a>`; }).join("") || `<div class="card empty-state"><h3>No conversations yet</h3><p>Buyers start one from a listing.</p></div>`}</aside>
+          <section class="card">${q ? thread(q) : `<p class="meta">Select a conversation.</p>`}</section></div>`;
+        host.querySelectorAll("[data-sel]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); sel = +a.dataset.sel; render(); }));
+        if (!q) return;
+        const f = id => host.querySelector(id);
+        if (f("#rf")) f("#rf").onsubmit = e => { e.preventDefault(); const t = f("#rt").value.trim(), o = f("#ro").value; if (!t && !o) { toast("Write a message or an offer.", "error"); return; } Store.reply(q.id, user.id, t || "Sent an offer", o); render(); };
+        if (f("#cl")) f("#cl").onclick = () => { Store.setStatus(q.id, user.id, "closed"); render(); };
+        host.querySelectorAll("[data-acc]").forEach(b => b.onclick = () => { Store.setStatus(q.id, user.id, "deal", b.dataset.acc); toast("Deal agreed. Phone numbers are now shown."); render(); });
+        if (f("#rvf")) f("#rvf").onsubmit = e => { e.preventDefault(); Store.review(q.id, user.id, f("#rs").value, f("#rx").value); toast("Review submitted."); render(); };
+      }
+      render();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Market Prices — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="prices">
+  <div id="site-header"></div>
+
+  <main>
+    <div class="container page-head" style="display:flex;gap:30px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1 1 340px">
+        <h1>Current Market Prices</h1>
+        <p class="lead">Live crop prices from major markets across Bangladesh — free to view, no login needed.</p>
+      </div>
+      <img src="assets/img/basket.jpg" alt="Fresh vegetables and rice at a Bangladeshi market" style="width:290px;max-width:44vw;border-radius:18px;box-shadow:var(--shadow-sm);aspect-ratio:3/2;object-fit:cover">
+    </div>
+
+    <div class="container">
+      <!-- FR-5: filter by crop, district and date -->
+      <form class="card filter-bar" id="filterBar">
+        <div class="field">
+          <label for="fCrop">Crop</label>
+          <select class="input" id="fCrop"><option value="">All Crops</option></select>
+        </div>
+        <div class="field">
+          <label for="fDistrict">District</label>
+          <select class="input" id="fDistrict"><option value="">All Districts</option></select>
+        </div>
+        <div class="field">
+          <label for="fDate">Updated on or after</label>
+          <input class="input" id="fDate" type="date">
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="fReset">Reset</button>
+      </form>
+    </div>
+
+    <div class="container">
+      <div class="panel-head">
+        <h2 id="resultCount"></h2>
+        <button class="btn btn-primary btn-sm" id="addPriceBtn" type="button" hidden></button>
+      </div>
+      <div class="card table-scroll">
+        <table class="table">
+          <thead>
+            <tr><th>Crop</th><th>Market</th><th>District</th><th>Price/kg</th><th>Trend</th><th>Last Updated</th><th id="adminCol" hidden></th></tr>
+          </thead>
+          <tbody id="priceRows"></tbody>
+        </table>
+      </div>
+      <p style="font-size:.8rem;color:var(--muted);margin-top:12px">Prices are entered by the KrishiHat administrator from available market sources. Trend compares with the previously recorded price.</p>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    const user = Store.session();
+    const isAdmin = user && user.role === "admin";
+
+    document.getElementById("fCrop").innerHTML += KH_CROPS.map(c => `<option>${KH.esc(c)}</option>`).join("");
+    document.getElementById("fDistrict").innerHTML += KH_DISTRICTS.map(d => `<option>${KH.esc(d)}</option>`).join("");
+
+    function trendCell(p) {
+      if (p.prev == null) return `<span class="trend flat">— new</span>`;
+      if (p.price > p.prev) return `<span class="trend up">${Icons.trendUp} ৳${p.prev} ↑</span>`;
+      if (p.price < p.prev) return `<span class="trend down">${Icons.trendDown} ৳${p.prev} ↓</span>`;
+      return `<span class="trend flat">— ৳${p.prev}</span>`;
+    }
+
+    function render() {
+      const crop = document.getElementById("fCrop").value;
+      const dist = document.getElementById("fDistrict").value;
+      const dateV = document.getElementById("fDate").value;
+      const from = dateV ? new Date(dateV + "T00:00:00").getTime() : null;
+
+      let rows = Store.prices().filter(p =>
+        (!crop || p.crop === crop) &&
+        (!dist || p.district === dist) &&
+        (from == null || p.date >= from)
+      );
+
+      document.getElementById("resultCount").textContent =
+        rows.length + (rows.length === 1 ? " price" : " prices");
+
+      const tbody = document.getElementById("priceRows");
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">${Icons.search}<h3>No prices match your filters</h3><p>Try a different crop, district or date.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(p => `
+        <tr>
+          <td class="t-strong">${KH.esc(p.crop)}</td>
+          <td>${KH.esc(p.market)}</td>
+          <td>${KH.esc(p.district)}</td>
+          <td class="price-cell">${KH.fmtMoney(p.price)}</td>
+          <td>${trendCell(p)}</td>
+          <td>${KH.fmtDate(p.date)}</td>
+          ${isAdmin ? `<td><button class="btn btn-ghost btn-sm" data-edit="${p.id}" type="button">${Icons.edit} Edit</button></td>` : ""}
+        </tr>`).join("");
+
+      if (isAdmin) tbody.querySelectorAll("[data-edit]").forEach(btn =>
+        btn.addEventListener("click", () => openPriceModal(Store.db.prices.find(x => x.id === Number(btn.dataset.edit))))
+      );
+    }
+
+    // FR-6: administrator adds / updates prices
+    if (isAdmin) {
+      const addBtn = document.getElementById("addPriceBtn");
+      addBtn.hidden = false;
+      document.getElementById("adminCol").hidden = false;
+      addBtn.innerHTML = Icons.plus + " Add Price";
+      addBtn.addEventListener("click", () => openPriceModal(null));
+    }
+
+    function openPriceModal(existing) {
+      const p = existing || { crop: "", market: "", district: "", price: "", date: "" };
+      openModal({
+        title: existing ? "Update Price" : "Add Price",
+        body: `
+          <form id="priceForm" novalidate>
+            <div class="field"><label for="mCrop">Crop</label>
+              <select class="input" id="mCrop"><option value="">Select crop</option>${KH_CROPS.map(c => `<option ${c === p.crop ? "selected" : ""}>${KH.esc(c)}</option>`).join("")}</select>
+            </div>
+            <div class="field"><label for="mMarket">Market</label>
+              <input class="input" id="mMarket" type="text" placeholder="e.g. Shaheb Bazar" value="${KH.esc(p.market)}">
+            </div>
+            <div class="field"><label for="mDistrict">District</label>
+              <select class="input" id="mDistrict"><option value="">Select district</option>${KH_DISTRICTS.map(d => `<option ${d === p.district ? "selected" : ""}>${KH.esc(d)}</option>`).join("")}</select>
+            </div>
+            <div class="field"><label for="mPrice">Price per kg (৳)</label>
+              <input class="input" id="mPrice" type="number" min="1" step="0.5" placeholder="Enter price" value="${p.price}">
+            </div>
+            <div class="field"><label for="mDate">Date</label>
+              <input class="input" id="mDate" type="date" value="${p.date ? new Date(p.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)}">
+            </div>
+            <button class="btn btn-primary btn-block" type="submit">${existing ? "Update Price" : "Add Price"}</button>
+          </form>`,
+        onOpen(overlay, close) {
+          overlay.querySelector("#priceForm").addEventListener("submit", e => {
+            e.preventDefault();
+            const data = {
+              crop: overlay.querySelector("#mCrop").value,
+              market: overlay.querySelector("#mMarket").value.trim(),
+              district: overlay.querySelector("#mDistrict").value,
+              price: overlay.querySelector("#mPrice").value,
+              date: new Date(overlay.querySelector("#mDate").value + "T00:00:00").getTime()
+            };
+            // NFR safety: reject clearly wrong values
+            if (!data.crop || !data.district || !data.market || !(Number(data.price) > 0)) {
+              toast("Please fill all fields with a valid (positive) price.", "error");
+              return;
+            }
+            if (existing) Store.updatePrice(existing.id, data);
+            else Store.addPrice(data);
+            close();
+            toast(existing ? "Price updated." : "Price added.");
+            render();
+          });
+        }
+      });
+    }
+
+    document.getElementById("filterBar").addEventListener("change", render);
+    document.getElementById("fReset").addEventListener("click", () => {
+      document.getElementById("fCrop").value = "";
+      document.getElementById("fDistrict").value = "";
+      document.getElementById("fDate").value = "";
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

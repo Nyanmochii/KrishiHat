@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KrishiHat — Fair Crop Prices & Direct Farmer Trade</title>
+  <meta name="description" content="KrishiHat lets farmers check current crop prices and sell directly to buyers — no middlemen.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="home">
+  <div id="site-header"></div>
+
+  <main>
+    <!-- Hero -->
+    <section class="container hero">
+      <div>
+        <span class="eyebrow" id="hero-eyebrow"></span>
+        <h1>Fair prices.<br>Direct trade.<br><span class="accent">No middlemen.</span></h1>
+        <p class="lead">KrishiHat gives farmers clear, current crop prices and a simple way to reach buyers directly — cutting waste and making prices fairer for everyone.</p>
+        <div class="hero-cta" id="hero-cta"></div>
+        <div class="stat-strip">
+          <div><b id="st-districts">15</b><span>Districts covered</span></div>
+          <div><b id="st-listings">0</b><span>Active listings</span></div>
+          <div><b id="st-crops">18</b><span>Crops tracked</span></div>
+        </div>
+      </div>
+      <div class="hero-img-wrap">
+        <img src="assets/img/basket.jpg" alt="Fresh produce and rice grain at a Bangladeshi market" fetchpriority="high">
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="container section">
+      <div class="section-head">
+        <h2>Why KrishiHat</h2>
+      </div>
+      <div class="feature-grid">
+        <div class="card feature-card">
+          <div class="feature-icon" data-icon="chart"></div>
+          <h3>Live market prices</h3>
+          <p>Current prices per kg from major markets across Bangladesh, updated by our administrators — free for everyone, no login needed.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="feature-icon" data-icon="leaf"></div>
+          <h3>Sell directly to buyers</h3>
+          <p>Farmers post produce in under five minutes. Local retailers and restaurants find it, message you, and deal directly.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="feature-icon" data-icon="mobile"></div>
+          <h3>Made for every phone</h3>
+          <p>Simple screens that work on any smartphone — built for farmers first, no technical experience required.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Prices preview + listings preview -->
+    <section class="container section">
+      <div class="home-split">
+        <div>
+          <div class="section-head">
+            <h2>Today's market prices</h2>
+            <a href="prices.html">See all prices →</a>
+          </div>
+          <div class="card table-scroll">
+            <table class="table" style="min-width:0">
+              <thead><tr><th>Crop</th><th>District</th><th>Price/kg</th></tr></thead>
+              <tbody id="price-preview"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="section-head">
+            <h2>Fresh from farmers</h2>
+            <a href="listings.html">Browse all listings →</a>
+          </div>
+          <div id="listing-preview" class="listing-grid" style="grid-template-columns:1fr 1fr"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="container section">
+      <div class="section-head"><h2>How it works</h2></div>
+      <div class="steps">
+        <div class="card step-card">
+          <h3>Farmers post produce</h3>
+          <p>Add a listing with your crop, quantity, price and harvest date. It goes live instantly.</p>
+        </div>
+        <div class="card step-card">
+          <h3>Buyers search &amp; inquire</h3>
+          <p>Search by crop, district and price range, then send an inquiry straight to the farmer.</p>
+        </div>
+        <div class="card step-card">
+          <h3>Deal directly</h3>
+          <p>Connect by phone, agree on a fair price, and trade — no middleman margin in between.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="container" id="cta-section"></section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    document.querySelectorAll(".feature-icon").forEach(el => { el.innerHTML = Icons[el.dataset.icon]; });
+    document.getElementById("hero-eyebrow").innerHTML = Icons.leaf + " Bangladesh's direct agri marketplace";
+
+    const user = Store.session();
+    document.getElementById("st-listings").textContent = Store.visibleListings().length;
+    document.getElementById("st-districts").textContent = KH_DISTRICTS.length;
+    document.getElementById("st-crops").textContent = KH_CROPS.length;
+
+    document.getElementById("hero-cta").innerHTML = user
+      ? (user.role === "farmer"
+          ? `<a class="btn btn-primary" href="add-produce.html">${Icons.plus} Post Your Produce</a>
+             <a class="btn btn-ghost" href="prices.html">Check Market Prices</a>`
+          : `<a class="btn btn-primary" href="listings.html">${Icons.search} Browse Listings</a>
+             <a class="btn btn-ghost" href="prices.html">Check Market Prices</a>`)
+      : `<a class="btn btn-primary" href="register.html">Get Started Free</a>
+         <a class="btn btn-ghost" href="listings.html">Browse Listings</a>`;
+
+    // prices preview: 6 most recent
+    const rows = Store.prices().slice(0, 6).map(p => `
+      <tr><td class="t-strong">${KH.esc(p.crop)}</td><td>${KH.esc(p.district)}</td>
+      <td class="price-cell">${KH.fmtMoney(p.price)}</td></tr>`).join("");
+    document.getElementById("price-preview").innerHTML = rows;
+
+    // listings preview: 4 most recent active
+    const preview = document.getElementById("listing-preview");
+    function renderPreview() {
+      preview.innerHTML = Store.visibleListings().slice(0, 4).map(l => listingCardHTML(l, Store.session())).join("");
+      wireSaveButtons(preview, Store.session(), renderPreview);
+    }
+    renderPreview();
+
+    document.getElementById("cta-section").innerHTML = `
+      <div class="cta-band">
+        <h2>${user ? "Welcome back, " + KH.esc(user.name.split(" ")[0]) + "!" : "Ready to trade fairly?"}</h2>
+        <p>${user
+          ? "Check today's prices, manage your listings, and connect with buyers across Bangladesh."
+          : "Join KrishiHat today — whether you grow crops or buy them, fairer trade starts here."}</p>
+        <a class="btn btn-ghost" href="${user ? "dashboard.html" : "register.html"}">${user ? "Go to Dashboard" : "Create a Free Account"}</a>
+      </div>`;
+  </script>
+</body>
+</html>

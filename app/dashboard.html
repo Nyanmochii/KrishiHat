@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="dashboard">
+  <div id="site-header"></div>
+
+  <main>
+    <div class="container" id="dash"></div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    const user = Store.session();
+    const host = document.getElementById("dash");
+
+    if (!user) {
+      host.innerHTML = `
+        <div class="auth-wrap" style="padding-top:70px">
+          <div class="card empty-state" style="max-width:480px;margin:0 auto;width:100%">
+            ${Icons.user}<h3>Please log in first</h3>
+            <p>Your dashboard shows your listings, inquiries and saved produce.</p>
+            <a class="btn btn-primary" href="login.html" style="margin-top:14px">Login</a>
+          </div>
+        </div>`;
+    }
+
+    /* ================= FARMER DASHBOARD (FR-16, FR-15) ================= */
+    else if (user.role === "farmer") {
+      const mine = Store.db.listings.filter(l => l.farmerId === user.id);
+      const active = mine.filter(l => l.status === "active" && !Store.isExpired(l));
+      const inq = Store.inquiriesForFarmer(user.id);
+
+      host.innerHTML = `
+      <div class="dash-grid">
+        <aside class="card sidenav" id="sideNav">
+          <button class="active" data-tab="overview">${Icons.grid} My Listings</button>
+          <a href="add-produce.html">${Icons.plus} Add Produce</a>
+          <button data-tab="inquiries">${Icons.inbox} Inquiries <span class="badge active" style="margin-left:auto">${inq.length}</span></button>
+          <div class="sep"></div>
+          <a href="prices.html">${Icons.chart} Market Prices</a>
+          <button class="danger" id="navLogout" type="button" style="color:var(--danger)">${Icons.logout} Logout</button>
+        </aside>
+
+        <div>
+          <div class="stat-row">
+            <div class="card stat-card"><h4>Active Listings</h4><div class="num">${active.length}</div><p>Your produce currently listed</p></div>
+            <div class="card stat-card"><h4>Inquiries</h4><div class="num">${inq.length}</div><p>Buyers interested in your produce</p></div>
+          </div>
+
+          <section class="card panel" data-panel="overview">
+            <div class="panel-head">
+              <h2>My Listings</h2>
+              <a class="btn btn-primary btn-sm" href="add-produce.html">${Icons.plus} Add Produce</a>
+            </div>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Crop</th><th>Quantity</th><th>Price/kg</th><th>Location</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="myRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card panel" data-panel="inquiries" hidden>
+            <div class="panel-head"><h2>Inquiries from Buyers</h2></div>
+            <div id="inqList"></div>
+          </section>
+        </div>
+      </div>`;
+
+      function statusBadge(l) {
+        if (Store.isExpired(l)) return `<span class="badge expired">Expired — update to relist</span>`;
+        if (l.status === "sold") return `<span class="badge sold">Sold</span>`;
+        return `<span class="badge active">Active</span>`;
+      }
+
+      function renderMine() {
+        const rows = Store.db.listings.filter(l => l.farmerId === user.id);
+        document.getElementById("myRows").innerHTML = rows.length ? rows.map(l => `
+          <tr>
+            <td class="t-strong">${KH.esc(l.crop)}</td>
+            <td>${l.qty.toLocaleString()} kg</td>
+            <td class="price-cell">${KH.fmtMoney(l.price)}</td>
+            <td>${KH.esc(l.district)}</td>
+            <td>${statusBadge(l)}</td>
+            <td><div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="add-produce.html?id=${l.id}">${Icons.edit} Edit</a>
+              ${l.status === "active" ? `<button class="btn btn-ghost btn-sm" data-sold="${l.id}" type="button">${Icons.check} Sold</button>` : ""}
+              <button class="btn btn-danger-soft btn-sm" data-del="${l.id}" type="button">${Icons.trash} Delete</button>
+            </div></td>
+          </tr>`).join("") :
+          `<tr><td colspan="6"><div class="empty-state">${Icons.box}<h3>No listings yet</h3><p>Add your first produce to start reaching buyers.</p></div></td></tr>`;
+
+        document.querySelectorAll("[data-sold]").forEach(b => b.addEventListener("click", () => {
+          Store.markSold(Number(b.dataset.sold), user.id);
+          toast("Listing marked as sold.");
+          renderMine();
+        }));
+        document.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
+          const l = Store.getListing(b.dataset.del);
+          openModal({
+            title: "Delete listing?",
+            body: `<p style="font-size:.93rem">Delete your <b>${KH.esc(l.crop)}</b> listing? This cannot be undone.</p>
+                   <div class="form-actions"><button class="btn btn-danger" id="confirmDel" type="button">Yes, Delete</button></div>`,
+            onOpen(o, close) {
+              o.querySelector("#confirmDel").addEventListener("click", () => {
+                Store.deleteListing(Number(b.dataset.del), user.id);
+                close(); toast("Listing deleted."); renderMine();
+              });
+            }
+          });
+        }));
+      }
+
+      function renderInq() {
+        const list = Store.inquiriesForFarmer(user.id);
+        document.getElementById("inqList").innerHTML = list.length ? list.map(q => {
+          const l = Store.getListing(q.listingId);
+          return `<div class="inquiry-item">
+            <div class="top"><b>${KH.esc(q.buyerName)}</b><span>${KH.fmtDate(q.date)}</span></div>
+            <p style="font-size:.83rem;color:var(--muted);margin:0">Re: <b>${l ? KH.esc(l.crop) : "listing removed"}</b></p>
+            <p>${KH.esc(q.message)}</p>
+            <p><span class="badge active">${khStatus(q.status)}</span> <a class="btn btn-primary btn-sm" href="inbox.html?id=${q.id}">Open &amp; reply</a></p>
+            ${q.qty ? `<span class="qty">Wants: ${q.qty.toLocaleString()} kg</span>` : ""}
+          </div>`;
+        }).join("") :
+        `<div class="empty-state">${Icons.inbox}<h3>No inquiries yet</h3><p>When buyers contact you, their messages appear here.</p></div>`;
+      }
+
+      renderMine(); renderInq();
+      wireTabs();
+    }
+
+    /* ================= BUYER DASHBOARD (FR-17) ================= */
+    else if (user.role === "buyer") {
+      const saved = Store.savedForBuyer(user.id);
+      const sent = Store.inquiriesByBuyer(user.id);
+
+      host.innerHTML = `
+      <div class="dash-grid">
+        <aside class="card sidenav" id="sideNav">
+          <button class="active" data-tab="saved">${Icons.bookmark} Saved Listings</button>
+          <button data-tab="sent">${Icons.inbox} My Inquiries</button>
+          <div class="sep"></div>
+          <a href="listings.html">${Icons.search} Browse Listings</a>
+          <a href="prices.html">${Icons.chart} Market Prices</a>
+          <button class="danger" id="navLogout" type="button" style="color:var(--danger)">${Icons.logout} Logout</button>
+        </aside>
+
+        <div>
+          <div class="stat-row">
+            <div class="card stat-card"><h4>Saved Listings</h4><div class="num">${saved.length}</div><p>Produce you are watching</p></div>
+            <div class="card stat-card"><h4>Inquiries Sent</h4><div class="num">${sent.length}</div><p>Messages sent to farmers</p></div>
+          </div>
+
+          <section class="card panel" data-panel="saved">
+            <div class="panel-head"><h2>Saved Listings</h2><a class="btn btn-ghost btn-sm" href="listings.html">Browse more</a></div>
+            <div class="listing-grid" id="savedGrid"></div>
+            <div id="alertBox"></div>
+          </section>
+
+          <section class="card panel" data-panel="sent" hidden>
+            <div class="panel-head"><h2>My Inquiries</h2></div>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Listing</th><th>Message</th><th>Qty Wanted</th><th>Date</th></tr></thead>
+                <tbody id="sentRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>`;
+
+      function renderSaved() {
+        const items = Store.savedForBuyer(user.id).filter(l => l.status === "active" && !Store.isExpired(l));
+        const grid = document.getElementById("savedGrid");
+        grid.innerHTML = items.length ? items.map(l => listingCardHTML(l, user)).join("") :
+          `<div class="empty-state" style="grid-column:1/-1">${Icons.bookmark}<h3>No saved listings</h3>
+           <p>Tap the bookmark on any listing to save it here.</p></div>`;
+        wireSaveButtons(grid, user, renderSaved);
+      }
+
+      function renderSent() {
+        const rows = Store.inquiriesByBuyer(user.id);
+        document.getElementById("sentRows").innerHTML = rows.length ? rows.map(q => {
+          const l = Store.getListing(q.listingId);
+          return `<tr>
+            <td class="t-strong">${l ? `<a href="listing.html?id=${l.id}">${KH.esc(l.crop)}</a>` : "listing removed"}</td>
+            <td>${KH.esc(q.message)}<br><span class="badge active">${khStatus(q.status)}</span> <a href="inbox.html?id=${q.id}">Open conversation</a></td>
+            <td>${q.qty ? q.qty.toLocaleString() + " kg" : "—"}</td>
+            <td>${KH.fmtDate(q.date)}</td>
+          </tr>`;
+        }).join("") :
+        `<tr><td colspan="4"><div class="empty-state">${Icons.inbox}<h3>No inquiries sent yet</h3><p>Find produce you like and contact the farmer.</p></div></td></tr>`;
+      }
+
+      renderSaved(); renderSent(); khRenderAlerts(user, document.getElementById("alertBox"));
+      wireTabs();
+    }
+
+    /* ================= ADMIN DASHBOARD (FR-18) ================= */
+    else if (user.role === "admin") {
+      const users = Store.db.users.filter(u => u.role !== "admin");
+      const all = Store.db.listings;
+
+      host.innerHTML = `
+      <div class="dash-grid">
+        <aside class="card sidenav" id="sideNav">
+          <button class="active" data-tab="users">${Icons.user} Users</button>
+          <button data-tab="allListings">${Icons.box} All Listings</button>
+          <div class="sep"></div>
+          <a href="prices.html">${Icons.chart} Manage Prices</a>
+          <button class="danger" id="navLogout" type="button" style="color:var(--danger)">${Icons.logout} Logout</button>
+        </aside>
+
+        <div>
+          <div class="stat-row">
+            <div class="card stat-card"><h4>Registered Users</h4><div class="num">${users.length}</div><p>Farmers and buyers</p></div>
+            <div class="card stat-card"><h4>Active Listings</h4><div class="num">${Store.visibleListings().length}</div><p>Visible in search</p></div>
+            <div class="card stat-card"><h4>Price Records</h4><div class="num">${Store.db.prices.length}</div><p>Across ${KH_DISTRICTS.length} districts</p></div>
+          </div>
+
+          <section class="card panel" data-panel="users">
+            <div class="panel-head"><h2>User Management</h2></div>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Name</th><th>Role</th><th>District</th><th>Contact</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="userRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card panel" data-panel="allListings" hidden>
+            <div class="panel-head"><h2>Listing Moderation</h2></div>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Crop</th><th>Farmer</th><th>Qty</th><th>Price/kg</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="allRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>`;
+
+      function renderUsers() {
+        document.getElementById("userRows").innerHTML = Store.db.users.filter(u => u.role !== "admin").map(u => `
+          <tr>
+            <td class="t-strong">${KH.esc(u.name)}</td>
+            <td>${KH.esc(u.role)}</td>
+            <td>${KH.esc(u.district)}</td>
+            <td>${KH.esc(u.phone)}</td>
+            <td>${u.active ? `<span class="badge active">Active</span>` : `<span class="badge deactivated">Deactivated</span>`}</td>
+            <td>${u.active
+              ? `<button class="btn btn-danger-soft btn-sm" data-deact="${u.id}" type="button">Deactivate</button>`
+              : `<button class="btn btn-ghost btn-sm" data-act="${u.id}" type="button">Reactivate</button>`}</td>
+          </tr>`).join("");
+
+        document.querySelectorAll("[data-deact]").forEach(b => b.addEventListener("click", () => {
+          const u = Store.setUserActive(Number(b.dataset.deact), false);
+          toast(u.name + " deactivated. They can no longer log in and their listings are hidden.");
+          renderUsers(); renderAll();
+        }));
+        document.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
+          const u = Store.setUserActive(Number(b.dataset.act), true);
+          toast(u.name + " reactivated.");
+          renderUsers(); renderAll();
+        }));
+      }
+
+      function renderAll() {
+        document.getElementById("allRows").innerHTML = Store.db.listings.map(l => {
+          const f = Store.db.users.find(u => u.id === l.farmerId);
+          const hidden = !f || !f.active;
+          const st = hidden ? `<span class="badge deactivated">Hidden (user inactive)</span>`
+            : Store.isExpired(l) ? `<span class="badge expired">Expired</span>`
+            : l.status === "sold" ? `<span class="badge sold">Sold</span>`
+            : `<span class="badge active">Active</span>`;
+          return `<tr>
+            <td class="t-strong"><a href="listing.html?id=${l.id}">${KH.esc(l.crop)}</a></td>
+            <td>${f ? KH.esc(f.name) : "—"}</td>
+            <td>${l.qty.toLocaleString()} kg</td>
+            <td class="price-cell">${KH.fmtMoney(l.price)}</td>
+            <td>${st}</td>
+            <td><button class="btn btn-danger-soft btn-sm" data-remove="${l.id}" type="button">${Icons.trash} Remove</button></td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="6"><div class="empty-state">${Icons.box}<h3>No listings</h3></div></td></tr>`;
+
+        document.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", () => {
+          Store.deleteListing(Number(b.dataset.remove));
+          toast("Listing removed from the platform.");
+          renderAll();
+        }));
+      }
+
+      renderUsers(); renderAll();
+      wireTabs();
+    }
+
+    /* ---------- shared: side-nav tabs + logout ---------- */
+    function wireTabs() {
+      const nav = document.getElementById("sideNav");
+      nav.querySelectorAll("[data-tab]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          nav.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b === btn));
+          document.querySelectorAll("[data-panel]").forEach(p =>
+            p.hidden = p.dataset.panel !== btn.dataset.tab);
+        });
+      });
+      const out = document.getElementById("navLogout");
+      if (out) out.addEventListener("click", () => {
+        Store.logout();
+        toast("You have been logged out.", "success");
+        setTimeout(() => location.href = "index.html", 500);
+      });
+    }
+  </script>
+</body>
+</html>

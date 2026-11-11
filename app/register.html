@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="register">
+  <div id="site-header"></div>
+
+  <main>
+    <div class="auth-wrap">
+      <div class="card auth-card" style="max-width:520px">
+        <h1>Create your account</h1>
+        <p class="sub">Join KrishiHat and connect directly in the agri marketplace</p>
+        <form id="regForm" novalidate>
+          <div class="field" data-field="name">
+            <label for="name">Name</label>
+            <input class="input" id="name" type="text" placeholder="Enter your full name" autocomplete="name">
+            <span class="err">Please enter your full name.</span>
+          </div>
+          <div class="field" data-field="phone">
+            <label for="phone">Phone</label>
+            <input class="input" id="phone" type="tel" placeholder="Enter your phone number (e.g. 01712-345678)" autocomplete="tel">
+            <span class="err">Please enter a valid phone number (e.g. 01712-345678).</span>
+          </div>
+          <div class="field" data-field="email">
+            <label for="email">Email</label>
+            <input class="input" id="email" type="email" placeholder="Enter your email address" autocomplete="email">
+            <span class="err">Please enter a valid email address.</span>
+          </div>
+          <div class="field" data-field="password">
+            <label for="password">Password</label>
+            <div class="pw-wrap">
+              <input class="input" id="password" type="password" placeholder="Create a password (min. 6 characters)" autocomplete="new-password">
+              <button type="button" class="pw-eye" id="pwEye" aria-label="Show password"></button>
+            </div>
+            <span class="err">Password must be at least 6 characters.</span>
+          </div>
+          <div class="field" data-field="district">
+            <label for="district">District</label>
+            <select class="input" id="district">
+              <option value="">Select your district</option>
+            </select>
+            <span class="err">Please select your district.</span>
+          </div>
+          <div class="field" data-field="role">
+            <label id="roleLabel">Role</label>
+            <div class="radio-row" role="radiogroup" aria-labelledby="roleLabel">
+              <label class="radio-card"><input type="radio" name="role" value="farmer" checked> Farmer</label>
+              <label class="radio-card"><input type="radio" name="role" value="buyer"> Buyer</label>
+            </div>
+            <span class="err">Please choose a role.</span>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Register</button>
+        </form>
+        <div class="auth-links">
+          <span>Already have an account?</span>
+          <a href="login.html"><b>Login</b></a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    if (Store.session()) location.replace("dashboard.html");
+
+    document.getElementById("district").innerHTML =
+      `<option value="">Select your district</option>` +
+      KH_DISTRICTS.map(d => `<option value="${KH.esc(d)}">${KH.esc(d)}</option>`).join("");
+
+    const eye = document.getElementById("pwEye");
+    eye.innerHTML = Icons.eye;
+    eye.addEventListener("click", () => {
+      const pw = document.getElementById("password");
+      const show = pw.type === "password";
+      pw.type = show ? "text" : "password";
+      eye.innerHTML = show ? Icons.eyeOff : Icons.eye;
+    });
+
+    const rules = {
+      name:     v => v.trim().length >= 3,
+      phone:    v => /^01\d{2}-?\d{6}$/.test(v.trim()),
+      email:    v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()),
+      password: v => v.length >= 6,
+      district: v => v !== "",
+      role:     () => !!document.querySelector('input[name="role"]:checked')
+    };
+
+    function setErr(field, on) {
+      document.querySelector(`[data-field="${field}"]`).classList.toggle("has-error", on);
+    }
+
+    document.getElementById("regForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const vals = {
+        name: document.getElementById("name").value,
+        phone: document.getElementById("phone").value,
+        email: document.getElementById("email").value,
+        password: document.getElementById("password").value,
+        district: document.getElementById("district").value,
+        role: (document.querySelector('input[name="role"]:checked') || {}).value || ""
+      };
+      let bad = false;
+      Object.keys(rules).forEach(k => {
+        const okField = rules[k](vals[k] || "");
+        setErr(k, !okField);
+        if (!okField) bad = true;
+      });
+      if (bad) return;
+
+      const res = Store.register(vals);
+      if (!res.ok) {
+        toast("An account with this email or phone already exists.", "error");
+        setErr("email", true); setErr("phone", true);
+        return;
+      }
+      toast("Account created. Welcome to KrishiHat, " + res.user.name.split(" ")[0] + "!");
+      setTimeout(() => location.href = "dashboard.html", 700);
+    });
+  </script>
+</body>
+</html>

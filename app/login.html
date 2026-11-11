@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="login">
+  <div id="site-header"></div>
+
+  <main>
+    <div class="auth-wrap">
+      <div class="card auth-card">
+        <h1>Login to your account</h1>
+        <p class="sub">Access your dashboard and stay connected</p>
+        <form id="loginForm" novalidate>
+          <div class="field" id="f-id">
+            <label for="identifier">Email or Phone</label>
+            <input class="input" id="identifier" type="text" placeholder="Enter your email or phone number" autocomplete="username">
+            <span class="err">Please enter your email or phone number.</span>
+          </div>
+          <div class="field" id="f-pass">
+            <label for="password">Password</label>
+            <div class="pw-wrap">
+              <input class="input" id="password" type="password" placeholder="Enter your password" autocomplete="current-password">
+              <button type="button" class="pw-eye" id="pwEye" aria-label="Show password"></button>
+            </div>
+            <span class="err">Please enter your password.</span>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Login</button>
+        </form>
+        <div class="auth-links">
+          <span>Forgot Password?</span>
+          <a href="register.html"><b>Register</b></a>
+        </div>
+        <div class="demo-row">
+          <p>PROTOTYPE DEMO — one-click login</p>
+          <div class="demo-chips">
+            <button class="demo-chip" type="button" data-demo="rahim@example.com|demo123">Farmer demo</button>
+            <button class="demo-chip" type="button" data-demo="selim@example.com|demo123">Buyer demo</button>
+            <button class="demo-chip" type="button" data-demo="admin@krishihat.com|admin123">Admin demo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    // already logged in? go to dashboard
+    if (Store.session()) location.replace("dashboard.html");
+
+    const eye = document.getElementById("pwEye");
+    eye.innerHTML = Icons.eye;
+    eye.addEventListener("click", () => {
+      const pw = document.getElementById("password");
+      const show = pw.type === "password";
+      pw.type = show ? "text" : "password";
+      eye.innerHTML = show ? Icons.eyeOff : Icons.eye;
+      eye.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+
+    function doLogin(identifier, password) {
+      const res = Store.login(identifier, password);
+      if (!res.ok) {
+        toast(res.reason === "deactivated"
+          ? "This account has been deactivated. Contact the administrator."
+          : "Incorrect email/phone or password. Please try again.", "error");
+        return;
+      }
+      toast("Welcome back, " + res.user.name.split(" ")[0] + "!");
+      setTimeout(() => location.href = "dashboard.html", 600);
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const id = document.getElementById("identifier");
+      const pw = document.getElementById("password");
+      document.getElementById("f-id").classList.toggle("has-error", id.value.trim() === "");
+      document.getElementById("f-pass").classList.toggle("has-error", pw.value === "");
+      if (id.value.trim() === "" || pw.value === "") return;
+      doLogin(id.value, pw.value);
+    });
+
+    document.querySelectorAll("[data-demo]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const [id, pass] = btn.dataset.demo.split("|");
+        doLogin(id, pass);
+      });
+    });
+  </script>
+</body>
+</html>

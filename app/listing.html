@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Listing — KrishiHat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="listings">
+  <div id="site-header"></div>
+
+  <main>
+    <div class="container section-tight" id="detail"></div>
+    <div class="container section-tight" id="related-wrap" hidden>
+      <div class="section-head"><h2>More like this</h2></div>
+      <div class="listing-grid" id="related"></div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    const id = new URLSearchParams(location.search).get("id");
+    const listing = Store.getListing(id);
+    const host = document.getElementById("detail");
+
+    if (!listing) {
+      host.innerHTML = `<div class="card empty-state">${Icons.search}
+        <h3>Listing not found</h3><p>It may have been removed or sold.</p>
+        <a class="btn btn-primary" href="listings.html" style="margin-top:14px">Browse Listings</a></div>`;
+      throw new Error("listing not found");
+    }
+
+    document.title = listing.crop + " — KrishiHat";
+
+    const user = Store.session();
+    const farmer = Store.db.users.find(u => u.id === listing.farmerId);
+    const own = user && user.id === listing.farmerId;
+    const expired = Store.isExpired(listing);
+    const phoneVisible = !!user; // FR-13: phone only for logged-in users
+
+    const badge = expired ? `<span class="badge expired">Expired</span>`
+      : listing.status === "sold" ? `<span class="badge sold">Sold</span>` : "";
+
+    host.innerHTML = `
+    <div class="detail-grid">
+      <div class="card detail-main">
+        <img class="hero-img" src="${listing.img}" alt="${KH.esc(listing.crop)}">
+        <div class="detail-body">
+          <h1>${KH.esc(listing.crop)} ${badge}</h1>
+          <span class="loc">${Icons.pin} ${KH.esc(listing.district)} &nbsp;·&nbsp; listed ${KH.timeAgo(listing.updatedAt)}</span>
+          <div class="detail-price">${KH.fmtMoney(listing.price)}<span style="font-size:1rem;color:var(--muted);font-weight:500">/kg</span></div>
+          <div class="detail-stats">
+            <div><span>Quantity Available</span><b>${listing.qty.toLocaleString()} kg</b></div>
+            <div><span>Harvest Date</span><b>${KH.fmtDate(listing.harvest)}</b></div>
+            <div><span>Category</span><b>${KH.esc(listing.category)}</b></div>
+            <div><span>Quality Grade</span><b>${listing.grade || "B"}</b></div>
+          </div>
+          <p style="max-width:64ch">${KH.esc(listing.desc)}</p>
+          ${own ? `
+          <div class="form-actions">
+            <a class="btn btn-ghost" href="add-produce.html?id=${listing.id}">${Icons.edit} Edit Listing</a>
+            <button class="btn btn-danger-soft" id="delBtn" type="button">${Icons.trash} Delete</button>
+            ${listing.status === "active" && !expired ? `<button class="btn btn-primary" id="soldBtn" type="button">${Icons.check} Mark as Sold</button>` : ""}
+          </div>` : ""}
+        </div>
+      </div>
+
+      <aside class="card farmer-card">
+        <h3>Farmer Information</h3>
+        <div class="farmer-line"><span>Name</span><b>${KH.esc(farmer ? farmer.name : "—")}</b></div>
+        <div class="farmer-line"><span>Rating</span><b>${khSellerBadge(listing.farmerId)}</b></div>
+        <div class="farmer-line"><span>District</span><b>${KH.esc(farmer ? farmer.district : listing.district)}</b></div>
+        <div class="farmer-line"><span>Phone</span>
+          ${phoneVisible
+            ? `<b>${KH.esc(farmer ? farmer.phone : "—")}</b>`
+            : `<b class="locked">${KH.maskPhone(farmer ? farmer.phone : "")}</b>`}
+        </div>
+        <div class="farmer-line"><span>Email</span><b>${phoneVisible ? KH.esc(farmer ? farmer.email : "—") : `<span class="locked">Login to view</span>`}</b></div>
+
+        ${!user ? `
+        <div class="reveal-note">${Icons.info}<span>Log in to view the farmer's phone number and send an inquiry.</span></div>
+        <a class="btn btn-primary btn-block" href="login.html">Login to Contact</a>` : ""}
+
+        ${user && user.role === "buyer" ? `
+        <div class="reveal-note" id="inqNote">${Icons.info}<span>Send an inquiry — the farmer's phone number will be shown right away.</span></div>
+        <button class="btn btn-primary btn-block" id="contactBtn" type="button" ${expired || listing.status !== "active" ? "disabled" : ""}>
+          ${Icons.phone} Contact Farmer
+        </button>
+        <button class="btn btn-ghost btn-block" id="saveBtn" type="button" style="margin-top:10px">
+          ${Store.isSaved(user.id, listing.id) ? Icons.bookmarkFill + " Saved" : Icons.bookmark + " Save Listing"}
+        </button>` : ""}
+
+        ${user && user.role === "farmer" && !own ? `
+        <div class="reveal-note">${Icons.info}<span>This is another farmer's listing. Farmers manage their own listings from the dashboard.</span></div>` : ""}
+
+        ${user && user.role === "admin" ? `
+        <button class="btn btn-danger-soft btn-block" id="adminRemoveBtn" type="button">${Icons.trash} Remove Listing (Admin)</button>` : ""}
+      </aside>
+    </div>`;
+
+    // ---- buyer actions ----
+    const contactBtn = document.getElementById("contactBtn");
+    if (contactBtn) contactBtn.addEventListener("click", () => openInquiryModal());
+
+    function openInquiryModal() {
+      openModal({
+        title: "Contact " + (farmer ? farmer.name : "Farmer"),
+        body: `
+          <p style="font-size:.9rem;color:var(--muted);margin-top:-6px">About: <b style="color:var(--ink)">${KH.esc(listing.crop)} — ${listing.qty.toLocaleString()} kg @ ${KH.fmtMoney(listing.price)}/kg</b></p>
+          <form id="inqForm" novalidate>
+            <div class="field"><label for="mQty">Quantity wanted (kg, optional)</label>
+              <input class="input" id="mQty" type="number" min="1" max="${listing.qty}" placeholder="e.g. 200">
+            </div>
+            <div class="field"><label for="mMsg">Message</label>
+              <textarea class="input" id="mMsg" placeholder="Assalamu alaikum, is this still available?"></textarea>
+            </div>
+            <div class="field"><label for="mOffer">Your offer (৳ per kg, optional)</label>
+              <input class="input" id="mOffer" type="number" min="1" placeholder="Listed at ${listing.price}">
+            </div>
+            <label style="display:flex;gap:8px;align-items:center;font-size:.9rem;margin:0 0 12px"><input type="checkbox" id="mBulk"> Send to every farmer selling ${KH.esc(listing.crop)}</label>
+            <button class="btn btn-primary btn-block" type="submit">Send Inquiry</button>
+          </form>`,
+        onOpen(overlay, close) {
+          overlay.querySelector("#inqForm").addEventListener("submit", e => {
+            e.preventDefault();
+            const msg = overlay.querySelector("#mMsg").value.trim();
+            const qty = overlay.querySelector("#mQty").value;
+            if (msg.length < 5) { toast("Please write a short message (at least 5 characters).", "error"); return; }
+            const offer = overlay.querySelector("#mOffer").value;
+            if (overlay.querySelector("#mBulk").checked) {
+              const n = Store.bulkInquiry({ buyerId: user.id, crop: listing.crop, message: msg, qty, offer });
+              toast("Inquiry sent to " + n + " farmer" + (n === 1 ? "" : "s") + " selling " + listing.crop + ".");
+            } else Store.addInquiry({ listingId: listing.id, buyerId: user.id, message: msg, qty, offer });
+            close();
+            toast("Inquiry sent! The farmer's phone number is now visible.");
+            document.getElementById("inqNote").innerHTML =
+              `${Icons.success}<span>Inquiry sent ${KH.timeAgo(Date.now())}. You can also call the farmer directly.</span>`;
+          });
+        }
+      });
+    }
+
+    const saveBtn = document.getElementById("saveBtn");
+    if (saveBtn) saveBtn.addEventListener("click", () => {
+      const nowSaved = Store.toggleSaved(user.id, listing.id);
+      saveBtn.innerHTML = nowSaved ? Icons.bookmarkFill + " Saved" : Icons.bookmark + " Save Listing";
+      toast(nowSaved ? "Listing saved to your dashboard." : "Listing removed from saved.");
+    });
+
+    // ---- farmer actions (FR-9: own listings only) ----
+    const delBtn = document.getElementById("delBtn");
+    if (delBtn) delBtn.addEventListener("click", () => {
+      openModal({
+        title: "Delete listing?",
+        body: `<p style="font-size:.93rem">This will permanently remove your <b>${KH.esc(listing.crop)}</b> listing and its inquiries.</p>
+               <div class="form-actions"><button class="btn btn-danger" id="confirmDel" type="button">Yes, Delete</button></div>`,
+        onOpen(overlay, close) {
+          overlay.querySelector("#confirmDel").addEventListener("click", () => {
+            Store.deleteListing(listing.id, user.id);
+            close();
+            toast("Listing deleted.");
+            setTimeout(() => location.href = "dashboard.html", 600);
+          });
+        }
+      });
+    });
+
+    const soldBtn = document.getElementById("soldBtn");
+    if (soldBtn) soldBtn.addEventListener("click", () => {
+      Store.markSold(listing.id, user.id);
+      toast("Congratulations! Listing marked as sold.");
+      setTimeout(() => location.reload(), 600);
+    });
+
+    // ---- admin (FR-18) ----
+    const adminRemove = document.getElementById("adminRemoveBtn");
+    if (adminRemove) adminRemove.addEventListener("click", () => {
+      openModal({
+        title: "Remove listing?",
+        body: `<p style="font-size:.93rem">Remove this improper listing from KrishiHat? It will no longer appear in search.</p>
+               <div class="form-actions"><button class="btn btn-danger" id="confirmRm" type="button">Remove Listing</button></div>`,
+        onOpen(overlay, close) {
+          overlay.querySelector("#confirmRm").addEventListener("click", () => {
+            Store.deleteListing(listing.id);
+            close();
+            toast("Listing removed by admin.");
+            setTimeout(() => location.href = "listings.html", 600);
+          });
+        }
+      });
+    });
+
+    // ---- related listings ----
+    const related = Store.visibleListings().filter(l => l.id !== listing.id && (l.crop === listing.crop || l.district === listing.district)).slice(0, 4);
+    if (related.length) {
+      document.getElementById("related-wrap").hidden = false;
+      document.getElementById("related").innerHTML = related.map(l => listingCardHTML(l, user)).join("");
+      wireSaveButtons(document.getElementById("related"), user, () => {});
+    }
+  </script>
+</body>
+</html>
